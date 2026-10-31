@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>贪吃蛇</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>body{background:#222;text-align:center;color:#fff;font-family:sans-serif;
+touch-action:none}
+canvas{background:#000;display:block;margin:10px auto;border:2px solid #555;
+width:90vw;max-width:400px;height:auto}
+button{padding:10px 20px;font-size:15px;cursor:pointer;margin:6px}
+label{margin-left:10px;cursor:pointer}</style>
+</head>
+<body>
+<h2>贪吃蛇 🐍 手机滑动 / 方向键控制</h2>
+<canvas id="c" width="400" height="400"></canvas>
+<p>分数：<span id="s">0</span> ｜ 最高分：<span id="best">0</span></p>
+<button id="startBtn">开始游戏</button>
+<button id="pauseBtn" disabled>暂停</button>
+<label><input type="checkbox" id="wrap"> 穿墙模式</label>
+<script>
+const cv=document.getElementById("c"),x=cv.getContext("2d");
+const N=20,size=400/N,BASE=200;
+let snake,dir,food,score,loop,paused=false,speed=BASE;
+let boostLeft=0,item=null,wrap=false;
+const best=+(localStorage.getItem("snakeBest")||0);
+document.getElementById("best").innerText=best;
+
+function reset(){snake=[[10,10],[9,10],[8,10]];dir=[1,0];paused=false;
+food=[rnd(),rnd()];score=0;speed=BASE;boostLeft=0;item=null;
+document.getElementById("s").innerText=0;
+document.getElementById("pauseBtn").innerText="暂停";
+document.getElementById("pauseBtn").disabled=true;draw()}
+function rnd(){return Math.floor(Math.random()*N)}
+function maybeItem(){if(!item&&Math.random()<0.3)item=[rnd(),rnd()]}
+function draw(){x.fillStyle="#000";x.fillRect(0,0,400,400);
+x.fillStyle="red";x.fillRect(food[0]*size,food[1]*size,size,size);
+if(item){x.fillStyle="yellow";x.fillRect(item[0]*size,item[1]*size,size,size)}
+x.fillStyle="lime";snake.forEach(s=>x.fillRect(s[0]*size,s[1]*size,size,size))}
+function setDir(dx,dy){ // 不能直接反向（会撞自己）
+if(snake.length>1&&dx===-dir[0]&&dy===-dir[1])return;
+dir=[dx,dy]}
+function tick(){if(paused)return;
+if(boostLeft>0){boostLeft--;if(boostLeft==0)speed=BASE}
+const head=[snake[0][0]+dir[0],snake[0][1]+dir[1]];
+if(wrap){head[0]=(head[0]+N)%N;head[1]=(head[1]+N)%N}
+else if(head[0]<0||head[0]>=N||head[1]<0||head[1]>=N)return gameover();
+if(snake.some(s=>s[0]==head[0]&&s[1]==head[1]))return gameover();
+snake.unshift(head);
+if(head[0]==food[0]&&head[1]==food[1]){score++;
+document.getElementById("s").innerText=score;food=[rnd(),rnd()];maybeItem()}
+else if(item&&head[0]==item[0]&&head[1]==item[1]){
+item=null;boostLeft=20;speed=80;maybeItem()}
+else snake.pop();draw()}
+function gameover(){clearInterval(loop);loop=null;
+if(score>best){localStorage.setItem("snakeBest",score);
+document.getElementById("best").innerText=score}
+document.getElementById("startBtn").innerText="重新开始";
+document.getElementById("pauseBtn").disabled=true}
+// 键盘控制
+addEventListener("keydown",e=>{
+if(e.key=="ArrowUp")setDir(0,-1);
+if(e.key=="ArrowDown")setDir(0,1);
+if(e.key=="ArrowLeft")setDir(-1,0);
+if(e.key=="ArrowRight")setDir(1,0)});
+// 触屏滑动控制
+let tsx=0,tsy=0;
+cv.addEventListener("touchstart",e=>{const t=e.touches[0];
+tsx=t.clientX;tsy=t.clientY;e.preventDefault()},false);
+cv.addEventListener("touchmove",e=>e.preventDefault(),false);
+cv.addEventListener("touchend",e=>{const t=e.changedTouches[0];
+const dx=t.clientX-tsx,dy=t.clientY-tsy;
+if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);
+else setDir(0,dy>0?1:-1);e.preventDefault()},false);
+document.getElementById("startBtn").onclick=function(){
+reset();if(loop)clearInterval(loop);loop=setInterval(tick,speed);
+this.innerText="游戏中...";document.getElementById("pauseBtn").disabled=false};
+document.getElementById("pauseBtn").onclick=function(){
+paused=!paused;this.innerText=paused?"继续":"暂停"};
+document.getElementById("wrap").onchange=function(){wrap=this.checked};
+reset();
+</script>
+</body>
+</html>
