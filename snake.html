@@ -1,0 +1,106 @@
+<!DOCTYPE html>                          <!-- 声明这是 HTML5 文档 -->
+<html>                                   <!-- 网页根标签 -->
+<head>                                   <!-- 头部：放标题和样式，不显示在页面上 -->
+<meta charset="utf-8">                  <!-- 用 UTF-8 编码，能显示中文 -->
+<title>贪吃蛇</title>                    <!-- 浏览器标签页上显示的标题 -->
+<style>                                  <!-- 开始写样式 -->
+body{background:#222;text-align:center;color:#fff;font-family:sans-serif}  /* 页面背景深灰、文字居中白色、无衬线字体 */
+canvas{background:#000;display:block;margin:20px auto;border:2px solid #555}  /* 画布黑底、居中、灰色边框 */
+button{padding:10px 20px;font-size:15px;cursor:pointer;margin:6px}  /* 按钮内边距、字号、鼠标变手型、间距 */
+label{margin-left:10px;cursor:pointer}  <!-- 复选框文字左边距、可点击 -->
+</style>                                 <!-- 样式结束 -->
+</head>                                  <!-- 头部结束 -->
+<body>                                   <!-- 页面主体开始 -->
+<h2>贪吃蛇 🐍 方向键控制</h2>            <!-- 标题 -->
+<canvas id="c" width="400" height="400"></canvas>  <!-- 400x400 的画布，id叫c -->
+<p>分数：<span id="s">0</span> ｜ 最高分：<span id="best">0</span></p>  <!-- 显示当前分和最高分 -->
+<button id="startBtn">开始游戏</button>  <!-- 开始按钮 -->
+<button id="pauseBtn" disabled>暂停</button>  <!-- 暂停按钮，disabled=一开始不能点 -->
+<label><input type="checkbox" id="wrap"> 穿墙模式</label>  <!-- 穿墙开关 -->
+<script>                                 <!-- 开始写 JavaScript 代码 -->
+const cv=document.getElementById("c"),x=cv.getContext("2d");  // 拿到画布和绘图笔
+const N=20,size=400/N,BASE=200;          // 网格20格，每格20像素，基础速度200毫秒
+let snake,dir,food,score,loop,paused=false,speed=BASE;  // 声明一堆变量：蛇、方向、食物、分数、计时器、是否暂停、速度
+let boostLeft=0,item=null,wrap=false;    // 加速剩余帧数、道具位置、是否穿墙
+const best=+(localStorage.getItem("snakeBest")||0);  // 从本地存储读最高分，没有就0
+document.getElementById("best").innerText=best;  // 把最高分显示到页面
+
+function reset(){                        // 重置游戏的函数
+  snake=[[10,10],[9,10],[8,10]];         // 蛇初始3节，横排在中间
+  dir=[1,0];                             // 初始方向：向右
+  paused=false;                          // 取消暂停
+  food=[rnd(),rnd()];                    // 食物随机位置
+  score=0;                               // 分数归零
+  speed=BASE;                            // 速度恢复基础
+  boostLeft=0;                           // 加速清零
+  item=null;                             // 道具清空
+  document.getElementById("s").innerText=0;  // 页面分数显示0
+  document.getElementById("pauseBtn").innerText="暂停";  // 暂停按钮文字复位
+  document.getElementById("pauseBtn").disabled=true;  // 暂停按钮禁用
+  draw();                                // 画一帧
+}
+function rnd(){return Math.floor(Math.random()*N)}  // 返回0~19的随机整数
+function maybeItem(){                    // 可能生成道具的函数
+  if(!item&&Math.random()<0.3)           // 没有道具且30%概率
+    item=[rnd(),rnd()];                  // 在随机位置放一个道具
+}
+function draw(){                         // 画面绘制函数
+  x.fillStyle="#000";x.fillRect(0,0,400,400);  // 用黑色清空整个画布
+  x.fillStyle="red";x.fillRect(food[0]*size,food[1]*size,size,size);  // 画红色食物
+  if(item){x.fillStyle="yellow";x.fillRect(item[0]*size,item[1]*size,size,size)}  // 有道具就画黄色
+  x.fillStyle="lime";snake.forEach(s=>x.fillRect(s[0]*size,s[1]*size,size,size));  // 画绿色蛇身每一节
+}
+function tick(){                         // 每帧执行的函数（游戏主循环）
+  if(paused)return;                      // 暂停时直接跳过
+  if(boostLeft>0){boostLeft--;if(boostLeft==0)speed=BASE}  // 加速倒计时，结束恢复基础速度
+  const head=[snake[0][0]+dir[0],snake[0][1]+dir[1]];  // 算出蛇头下一步位置
+  if(wrap){head[0]=(head[0]+N)%N;head[1]=(head[1]+N)%N}  // 穿墙：超出从对面出来
+  else if(head[0]<0||head[0]>=N||head[1]<0||head[1]>=N){return gameover()}  // 不穿墙且撞墙→结束
+  if(snake.some(s=>s[0]==head[0]&&s[1]==head[1]))return gameover();  // 撞到自己→结束
+  snake.unshift(head);                   // 新头加到蛇最前面
+  if(head[0]==food[0]&&head[1]==food[1]){  // 如果吃到食物
+    score++;                             // 分数+1
+    document.getElementById("s").innerText=score;  // 更新页面分数
+    food=[rnd(),rnd()];                  // 食物重新随机
+    maybeItem();                         // 试试生成道具
+  }
+  else if(item&&head[0]==item[0]&&head[1]==item[1]){  // 如果吃到道具
+    item=null;                           // 道具消失
+    boostLeft=20;                        // 加速20帧
+    speed=80;                            // 速度提到80毫秒（变快）
+    maybeItem();                         // 再试试生成新道具
+  }
+  else snake.pop();                      // 没吃到就去掉蛇尾（保持长度）
+  draw();                                // 重新画一帧
+}
+function gameover(){                     // 游戏结束函数
+  clearInterval(loop);loop=null;         // 停止计时器
+  if(score>best){                        // 如果破了纪录
+    localStorage.setItem("snakeBest",score);  // 存到本地
+    document.getElementById("best").innerText=score;  // 更新页面最高分
+  }
+  document.getElementById("startBtn").innerText="重新开始";  // 开始按钮变"重新开始"
+  document.getElementById("pauseBtn").disabled=true;  // 暂停按钮禁用
+}
+addEventListener("keydown",e=>{          // 监听键盘按键
+  if(e.key=="ArrowUp")dir=[0,-1];        // 上→方向向上
+  if(e.key=="ArrowDown")dir=[0,1];       // 下→方向向下
+  if(e.key=="ArrowLeft")dir=[-1,0];      // 左→方向向左
+  if(e.key=="ArrowRight")dir=[1,0];      // 右→方向向右
+});
+document.getElementById("startBtn").onclick=function(){  // 点开始按钮
+  reset();                               // 先重置
+  if(loop)clearInterval(loop);           // 清掉旧计时器
+  loop=setInterval(tick,speed);          // 按当前速度开新计时器（游戏开始跑）
+  this.innerText="游戏中...";            // 按钮文字变"游戏中..."
+  document.getElementById("pauseBtn").disabled=false;  // 暂停按钮可用
+};
+document.getElementById("pauseBtn").onclick=function(){  // 点暂停按钮
+  paused=!paused;                        // 暂停状态取反
+  this.innerText=paused?"继续":"暂停";   // 文字在"继续/暂停"间切换
+};
+document.getElementById("wrap").onchange=function(){wrap=this.checked};  // 勾选穿墙就开启
+reset();                                 // 页面加载时先重置一次（画出静止画面）
+</script>                                <!-- 代码结束 -->
+</body>                                  <!-- 主体结束 -->
+</html>                                  <!-- 文档结束 -->
