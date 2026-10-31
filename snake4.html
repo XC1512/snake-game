@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>贪吃蛇</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{background:#222;text-align:center;color:#fff;font-family:sans-serif;
+margin:0;padding:10px}
+canvas{background:#000;display:block;margin:10px auto;border:2px solid #555;
+width:90vw;max-width:400px;height:auto}
+button{padding:10px 20px;font-size:15px;cursor:pointer;margin:6px}
+label{margin-left:10px;cursor:pointer}
+.help{text-align:left;max-width:420px;margin:14px auto;font-size:14px;
+line-height:1.7;background:#2b2b2b;padding:14px 18px;border-radius:8px}
+.help b{color:#7CFC00}
+.set{max-width:420px;margin:12px auto;background:#2b2b2b;padding:12px 18px;
+border-radius:8px;text-align:left;font-size:14px;line-height:2}
+.set input{width:80px;padding:3px 6px;border-radius:4px;border:none;
+background:#444;color:#fff;margin-left:8px}
+.set .row{display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+<h2>贪吃蛇 🐍 手机滑动 / 方向键控制</h2>
+<canvas id="c" width="400" height="400"></canvas>
+<p>分数：<span id="s">0</span> ｜ 最高分：<span id="best">0</span></p>
+
+<div class="set">
+  <div class="row"><span>地图大小 (格)</span><input id="setN" type="number" value="100" min="20" max="300"></div>
+  <div class="row"><span>视野大小 (格)</span><input id="setV" type="number" value="15" min="5" max="60"></div>
+  <div class="row"><span>道具数量</span><input id="setI" type="number" value="5" min="0" max="50"></div>
+  <div class="row"><span>蛇速 (毫秒,越小越快)</span><input id="setS" type="number" value="200" min="40" max="600"></div>
+  <div class="row"><span>加速时长 (帧)</span><input id="setB" type="number" value="20" min="5" max="200"></div>
+</div>
+
+<button id="startBtn">开始游戏</button>
+<button id="pauseBtn" disabled>暂停</button>
+<label><input type="checkbox" id="wrap"> 穿墙模式</label>
+<label><input type="checkbox" id="showMap" checked> 显示小地图</label>
+<label><input type="checkbox" id="overview"> 全局预览</label>
+
+<div class="help">
+<b>🎮 操作说明</b><br>
+• <b>电脑：</b>用 ↑ ↓ ← → 方向键控制移动<br>
+• <b>手机：</b>在黑色游戏区用手指<b>上下左右滑动</b>控制方向<br>
+• <b>设置：</b>开局前先调上面的数字（地图/视野/道具/速度/加速），点开始生效<br>
+• <b>开始：</b>点「开始游戏」按钮，游戏才开始跑<br>
+• <b>暂停 / 继续：</b>点「暂停」按钮可随时停下或继续<br>
+• <b>穿墙模式：</b>勾选后撞墙不死，从对面穿出；不勾则撞墙结束<br>
+• <b>撞自己：</b>本版本<b>撞到自己的身体不会死</b>，可放心绕圈<br>
+• <b>🟡 加速道具：</b>地图上有多个，吃到短时间提速，过会儿恢复<br>
+• <b>🍎 食物：</b>吃红色方块得分，每吃一个加 1 分<br>
+• <b>🏆 最高分：</b>自动保存在本机，关掉再开依然记录<br>
+• <b>🗺️ 小地图：</b>左下角全局位置，绿点=你，红=食物，黄=道具；可隐藏<br>
+• <b>🌍 全局预览：</b>勾上俯瞰整张大地图，取消则镜头跟随你
+</div>
+
+<script>
+const cv=document.getElementById("c"),x=cv.getContext("2d");
+const CELL=14,STEP=2,MM=80,MP=6;
+let N=100,VIEW=15,ITEM_COUNT=5,BASE=200,BOOST_FRAMES=20;
+let snake,dir,pix,score,loop,paused=false,speed=BASE;
+let boostLeft=0,items=[],wrap=false,showMap=true,overview=false,food;
+const best=+(localStorage.getItem("snakeBest")||0);
+document.getElementById("best").innerText=best;
+
+function rnd(){return Math.floor(Math.random()*N)}
+function applySettings(){            // 读取设置面板
+  N=Math.max(20,Math.min(300,+$("setN").value||100));
+  VIEW=Math.max(5,Math.min(60,+$("setV").value||15));
+  ITEM_COUNT=Math.max(0,Math.min(50,+$("setI").value||5));
+  BASE=Math.max(40,Math.min(600,+$("setS").value||200));
+  BOOST_FRAMES=Math.max(5,Math.min(200,+$("setB").value||20));
+}
+function $(id){return document.getElementById(id)}
+function reset(){
+  applySettings();
+  const WORLD=N*CELL;
+  const c=N/2|0;
+  snake=[[c,c],[c-1,c],[c-2,c]];
+  pix=snake.map(s=>[s[0]*CELL,s[1]*CELL]);
+  dir=[1,0];paused=false;speed=BASE;boostLeft=0;
+  food=[rnd(),rnd()];score=0;
+  items=[];for(let i=0;i<ITEM_COUNT;i++)items.push([rnd(),rnd()]);
+  document.getElementById("s").innerText=0;
+  document.getElementById("pauseBtn").innerText="暂停";
+  document.getElementById("pauseBtn").disabled=true;draw()
+}
+function camTopLeft(){
+  const WORLD=N*CELL;
+  if(overview)return [0,0];
+  const hx=pix[0][0], hy=pix[0][1];
+  let cx=hx-VIEW*CELL/2, cy=hy-VIEW*CELL/2;
+  if(!wrap){cx=Math.max(0,Math.min(cx,WORLD-VIEW*CELL));
+    cy=Math.max(0,Math.min(cy,WORLD-VIEW*CELL));}
+  return [cx,cy]
+}
+function draw(){
+  x.fillStyle="#000";x.fillRect(0,0,400,400);
+  const [cx,cy]=camTopLeft();
+  const scale=overview?(400/(N*CELL)):(400/(VIEW*CELL));
+  x.fillStyle="red";
+  x.fillRect((food[0]*CELL-cx)*scale,(food[1]*CELL-cy)*scale,CELL*scale,CELL*scale);
+  x.fillStyle="yellow";
+  items.forEach(it=>x.fillRect((it[0]*CELL-cx)*scale,(it[1]*CELL-cy)*scale,CELL*scale,CELL*scale));
+  x.fillStyle="lime";
+  pix.forEach(p=>x.fillRect((p[0]-cx)*scale,(p[1]-cy)*scale,CELL*scale,CELL*scale));
+  if(showMap)drawMini()
+}
+function drawMini(){
+  const ox=MP, oy=400-MM-MP;
+  x.fillStyle="rgba(0,0,0,0.6)";x.fillRect(ox,oy,MM,MM);
+  x.strokeStyle="#888";x.lineWidth=1;x.strokeRect(ox,oy,MM,MM);
+  const k=MM/N;
+  x.fillStyle="#2e8b2e";snake.forEach(s=>x.fillRect(ox+s[0]*k,oy+s[1]*k,k,k));
+  x.fillStyle="red";x.fillRect(ox+food[0]*k,oy+food[1]*k,k,k);
+  x.fillStyle="yellow";items.forEach(it=>x.fillRect(ox+it[0]*k,oy+it[1]*k,k,k));
+  x.fillStyle="#7CFC00";const h=snake[0];x.fillRect(ox+h[0]*k,oy+h[1]*k,k,k);
+  if(!overview){const [cx,cy]=camTopLeft();const WORLD=N*CELL;
+    x.strokeStyle="#fff";x.lineWidth=1;
+    x.strokeRect(ox+cx/WORLD*MM,oy+cy/WORLD*MM,VIEW*CELL/WORLD*MM,VIEW*CELL/WORLD*MM)}
+}
+function setDir(dx,dy){
+  if(snake.length>1&&dx===-dir[0]&&dy===-dir[1])return;
+  dir=[dx,dy]
+}
+function tick(){
+  if(paused)return;
+  if(boostLeft>0){boostLeft--;if(boostLeft==0)speed=BASE}
+  const WORLD=N*CELL;
+  const head=pix[0];
+  let nx=head[0]+dir[0]*STEP, ny=head[1]+dir[1]*STEP;
+  if(wrap){nx=(nx+WORLD)%WORLD;ny=(ny+WORLD)%WORLD}
+  else if(nx<0||nx>=WORLD||ny<0||ny>=WORLD)return gameover();
+  const headCell=[Math.round(nx/CELL),Math.round(ny/CELL)];
+  pix.unshift([nx,ny]);
+  if(headCell[0]===food[0]&&headCell[1]===food[1]){
+    score++;document.getElementById("s").innerText=score;
+    food=[rnd(),rnd()];snake.unshift(headCell);
+  } else {
+    let ate=-1;
+    for(let i=0;i<items.length;i++)
+      if(headCell[0]===items[i][0]&&headCell[1]===items[i][1]){ate=i;break}
+    if(ate>=0){items.splice(ate,1);boostLeft=BOOST_FRAMES;speed=80;
+      items.push([rnd(),rnd()]);snake.unshift(headCell);
+    } else {pix.pop();snake.unshift(headCell);snake.pop();}
+  }
+  draw()
+}
+function gameover(){clearInterval(loop);loop=null;
+  if(score>best){localStorage.setItem("snakeBest",score);
+    document.getElementById("best").innerText=score}
+  x.fillStyle="rgba(120,0,0,0.78)";x.fillRect(0,0,400,400);
+  x.fillStyle="#fff";x.textAlign="center";
+  x.font="bold 42px sans-serif";x.fillText("游戏失败",200,170);
+  x.font="20px sans-serif";x.fillText("本局得分："+score,200,215);
+  x.fillText("最高分："+best,200,245);
+  x.font="16px sans-serif";x.fillText("点「重新开始」再来一局",200,290);
+  document.getElementById("startBtn").innerText="重新开始";
+  document.getElementById("pauseBtn").disabled=true
+}
+addEventListener("keydown",e=>{
+  if(e.key=="ArrowUp")setDir(0,-1);
+  if(e.key=="ArrowDown")setDir(0,1);
+  if(e.key=="ArrowLeft")setDir(-1,0);
+  if(e.key=="ArrowRight")setDir(1,0)});
+let tsx=0,tsy=0;
+cv.addEventListener("touchstart",e=>{const t=e.touches[0];
+  tsx=t.clientX;tsy=t.clientY;e.preventDefault()},false);
+cv.addEventListener("touchmove",e=>e.preventDefault(),false);
+cv.addEventListener("touchend",e=>{const t=e.changedTouches[0];
+  const dx=t.clientX-tsx,dy=t.clientY-tsy;
+  if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);
+  else setDir(0,dy>0?1:-1);e.preventDefault()},false);
+document.getElementById("startBtn").onclick=function(){
+  reset();if(loop)clearInterval(loop);loop=setInterval(tick,speed);
+  this.innerText="游戏中...";document.getElementById("pauseBtn").disabled=false};
+document.getElementById("pauseBtn").onclick=function(){
+  paused=!paused;this.innerText=paused?"继续":"暂停"};
+document.getElementById("wrap").onchange=function(){wrap=this.checked};
+document.getElementById("showMap").onchange=function(){showMap=this.checked;draw()};
+document.getElementById("overview").onchange=function(){overview=this.checked;draw()};
+reset();
+</script>
+</body>
+</html>
